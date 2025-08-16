@@ -1,0 +1,17 @@
+{
+  "name": "BleSpamLib",
+  "version": "1.0.0",
+  "description": "A library to perform various BLE spam attacks, extracted from the Bruce project. For educational and security research purposes only.",
+  "keywords": "ble, bluetooth, spam, security, esp32",
+  "authors": {
+    "name": "Bruce Firmware Authors",
+    "url": "https://bruce.computer"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pr3y/Bruce.git"
+  },
+  "dependencies": {
+    "h2zero/NimBLE-Arduino": "^1.4.0"
+  }
+}

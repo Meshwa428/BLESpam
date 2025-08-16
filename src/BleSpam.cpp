@@ -140,7 +140,6 @@ void BleSpam::spamTask(void *param) {
                     instance->executeSpam(instance->_currentSpamType);
                     break;
                 default:
-                    // Should not happen, but as a safe guard:
                     vTaskDelay(pdMS_TO_TICKS(10)); 
                     break;
             }
@@ -159,14 +158,13 @@ void BleSpam::spamTask(void *param) {
     vTaskDelete(NULL);
 }
 
-
 void BleSpam::generateRandomMac(uint8_t *mac) {
     for (int i = 0; i < 6; i++) {
-        mac[i] = random(256);
-        if (i == 0) {
-            mac[i] |= 0xF0; // Set first 4 bits to high
-        }
+        mac[i] = esp_random() & 0xFF;
     }
+    // Ensure the MAC address is a unicast, locally administered random static address
+    mac[0] &= 0xFE; // Clear LSB to ensure unicast
+    mac[0] |= 0xC2; // Set two MSBs to 11 for random static and second LSB for locally administered
 }
 
 const char *BleSpam::generateRandomName() {
@@ -305,7 +303,7 @@ void BleSpam::executeCustomSpam(String spamName) {
 }
 
 void BleSpam::executeIBeacon() {
-    BLEDevice::init(""); // A name can be provided here if desired
+    BLEDevice::init("");
     vTaskDelay(10 / portTICK_PERIOD_MS);
     esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
 

@@ -1,6 +1,8 @@
 #include "BleSpam.h"
 #include <esp_bt.h>
+#include <esp_mac.h>
 
+// Set Bluetooth maximum transmit power based on the ESP32 chip model
 #if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C2) || defined(CONFIG_IDF_TARGET_ESP32S3)
 #define MAX_TX_POWER ESP_PWR_LVL_P21
 #elif defined(CONFIG_IDF_TARGET_ESP32H2) || defined(CONFIG_IDF_TARGET_ESP32C6)
@@ -9,6 +11,7 @@
 #define MAX_TX_POWER ESP_PWR_LVL_P9
 #endif
 
+// Static data members initialization
 const uint8_t BleSpam::IOS1[] = {0x02, 0x0e, 0x0a, 0x0f, 0x13, 0x14, 0x03, 0x0b, 0x0c, 0x11, 0x10, 0x05, 0x06, 0x09, 0x17, 0x12, 0x16};
 const uint8_t BleSpam::IOS2[] = {0x01, 0x06, 0x20, 0x2b, 0xc0, 0x0d, 0x13, 0x27, 0x0b, 0x09, 0x02, 0x1e, 0x24};
 const DeviceType BleSpam::android_models[] = {

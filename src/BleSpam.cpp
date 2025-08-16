@@ -1,6 +1,7 @@
 #include "BleSpam.h"
 #include <esp_bt.h>
 #include <esp_mac.h>
+#include <NimBLEBeacon.h>
 
 // Set Bluetooth maximum transmit power based on the ESP32 chip model
 #if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C2) || defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -28,42 +29,46 @@ const WatchModel BleSpam::watch_models[] = {
 const int BleSpam::android_models_count = sizeof(BleSpam::android_models) / sizeof(BleSpam::android_models[0]);
 const int BleSpam::watch_models_count = sizeof(BleSpam::watch_models) / sizeof(BleSpam::watch_models[0]);
 
-BleSpam::BleSpam() : pAdvertising(nullptr), _spamTaskHandle(NULL), _isRunning(false), _spamAllTypes(false) {}
+BleSpam::BleSpam() : pAdvertising(nullptr), _spamTaskHandle(NULL), _isRunning(false), _currentMode(NONE) {}
 
 BleSpam::~BleSpam() {
     stop();
 }
 
 bool BleSpam::start(EBLEPayloadType type) {
-    if (_isRunning) {
-        stop();
-    }
+    if (_isRunning) stop();
+    _currentMode = SPAM_TYPE;
     _currentSpamType = type;
-    _spamAllTypes = false;
-    _customSpamName = "";
     _isRunning = true;
     xTaskCreate(this->spamTask, "bleSpamTask", 4096, this, 1, &_spamTaskHandle);
     return _spamTaskHandle != NULL;
 }
 
 bool BleSpam::startAll() {
-    if (_isRunning) {
-        stop();
-    }
-    _spamAllTypes = true;
-    _customSpamName = "";
+    if (_isRunning) stop();
+    _currentMode = SPAM_ALL;
     _isRunning = true;
     xTaskCreate(this->spamTask, "bleSpamTask", 4096, this, 1, &_spamTaskHandle);
     return _spamTaskHandle != NULL;
 }
 
 bool BleSpam::startCustom(String spamName) {
-    if (_isRunning) {
-        stop();
-    }
+    if (_isRunning) stop();
+    _currentMode = SPAM_CUSTOM;
     _customSpamName = spamName;
-    _currentSpamType = static_cast<EBLEPayloadType>(-1); // Sentinel value for custom spam
-    _spamAllTypes = false;
+    _isRunning = true;
+    xTaskCreate(this->spamTask, "bleSpamTask", 4096, this, 1, &_spamTaskHandle);
+    return _spamTaskHandle != NULL;
+}
+
+bool BleSpam::startIBeacon(String uuid, uint16_t major, uint16_t minor, uint16_t manufacturerId, int8_t txPower) {
+    if (_isRunning) stop();
+    _currentMode = IBEACON;
+    _iBeaconUUID = uuid;
+    _iBeaconMajor = major;
+    _iBeaconMinor = minor;
+    _iBeaconManufacturerId = manufacturerId;
+    _iBeaconTxPower = txPower;
     _isRunning = true;
     xTaskCreate(this->spamTask, "bleSpamTask", 4096, this, 1, &_spamTaskHandle);
     return _spamTaskHandle != NULL;
@@ -72,18 +77,17 @@ bool BleSpam::startCustom(String spamName) {
 void BleSpam::stop() {
     if (_isRunning && _spamTaskHandle != NULL) {
         _isRunning = false; // Signal the task to stop
-        // Wait a moment for the task to finish gracefully
-        vTaskDelay(pdMS_TO_TICKS(150));
-        // If the task hasn't deleted itself, force deletion
+        vTaskDelay(pdMS_TO_TICKS(150)); // Wait for the task to process the stop signal
         if (_spamTaskHandle != NULL) {
             vTaskDelete(_spamTaskHandle);
             _spamTaskHandle = NULL;
-        }
-        // Final cleanup of BLE stack if it was left initialized
-        if (BLEDevice::getInitialized()) {
-            BLEDevice::deinit();
+            // Also ensure BLE is de-initialized if the task was killed abruptly
+            if (BLEDevice::getInitialized()) {
+                BLEDevice::deinit();
+            }
         }
     }
+    _currentMode = NONE;
 }
 
 bool BleSpam::isRunning() {
@@ -115,21 +119,46 @@ void BleSpam::spamTask(void *param) {
     BleSpam* instance = static_cast<BleSpam*>(param);
     int typeIndex = 0;
 
-    while (instance->_isRunning) {
-        if (instance->_spamAllTypes) {
-            instance->executeSpam(static_cast<EBLEPayloadType>(typeIndex));
-            typeIndex = (typeIndex + 1) % 5;
-        } else if (instance->_currentSpamType == static_cast<EBLEPayloadType>(-1)) {
-            instance->executeCustomSpam(instance->_customSpamName);
-        } else {
-            instance->executeSpam(instance->_currentSpamType);
+    if (instance->_currentMode == IBEACON) {
+        instance->executeIBeacon();
+        // iBeacon advertisement is continuous, so the task idles here.
+        while(instance->_isRunning) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    } else {
+        // Spamming modes loop
+        while (instance->_isRunning) {
+            switch (instance->_currentMode) {
+                case SPAM_CUSTOM:
+                    instance->executeCustomSpam(instance->_customSpamName);
+                    break;
+                case SPAM_ALL:
+                    instance->executeSpam(static_cast<EBLEPayloadType>(typeIndex));
+                    typeIndex = (typeIndex + 1) % 5;
+                    break;
+                case SPAM_TYPE:
+                    instance->executeSpam(instance->_currentSpamType);
+                    break;
+                default:
+                    // Should not happen, but as a safe guard:
+                    vTaskDelay(pdMS_TO_TICKS(10)); 
+                    break;
+            }
         }
     }
 
-    // Task cleanup and self-deletion
+    // Cleanup when task is about to exit
+    if (BLEDevice::getInitialized()) {
+        if(instance->pAdvertising && instance->pAdvertising->isAdvertising()){
+            instance->pAdvertising->stop();
+        }
+        BLEDevice::deinit();
+    }
+
     instance->_spamTaskHandle = NULL;
     vTaskDelete(NULL);
 }
+
 
 void BleSpam::generateRandomMac(uint8_t *mac) {
     for (int i = 0; i < 6; i++) {
@@ -273,4 +302,27 @@ void BleSpam::executeCustomSpam(String spamName) {
     pAdvertising->stop();
     vTaskDelay(10 / portTICK_PERIOD_MS);
     BLEDevice::deinit();
+}
+
+void BleSpam::executeIBeacon() {
+    BLEDevice::init(""); // A name can be provided here if desired
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
+
+    pAdvertising = BLEDevice::getAdvertising();
+
+    NimBLEBeacon beacon;
+    beacon.setManufacturerId(_iBeaconManufacturerId);
+    beacon.setProximityUUID(NimBLEUUID(_iBeaconUUID.c_str()));
+    beacon.setMajor(_iBeaconMajor);
+    beacon.setMinor(_iBeaconMinor);
+    beacon.setSignalPower(_iBeaconTxPower);
+
+    BLEAdvertisementData advertisementData;
+    advertisementData.setFlags(0x1A); // General Discoverable, BR/EDR Not Supported
+    advertisementData.setManufacturerData(beacon.getData());
+
+    pAdvertising->setAdvertisementData(advertisementData);
+    pAdvertising->setScanResponse(false);
+    pAdvertising->start();
 }

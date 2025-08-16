@@ -11,6 +11,7 @@ void print_help() {
   Serial.println("  start google          - Start Google FastPair spam");
   Serial.println("  start all             - Cycle through all spam types");
   Serial.println("  start custom <name>   - Start spam with a custom name");
+  Serial.println("  start ibeacon <uuid> [major] [minor] - Start iBeacon");
   Serial.println("  stop                  - Stop any running spam attack");
   Serial.println("  status                - Check if an attack is running");
   Serial.println("  help                  - Show this help message");
@@ -51,6 +52,26 @@ void loop() {
         String name = type.substring(7);
         Serial.println("Starting custom spam with name: " + name);
         bleSpammer.startCustom(name);
+      } else if (type.startsWith("ibeacon ")) {
+          String params = type.substring(8);
+          int first_space = params.indexOf(' ');
+          String uuid = (first_space == -1) ? params : params.substring(0, first_space);
+          
+          uint16_t major = 1;
+          uint16_t minor = 1;
+          
+          if (first_space != -1) {
+              String remaining = params.substring(first_space + 1);
+              int second_space = remaining.indexOf(' ');
+              if (second_space == -1) {
+                  major = remaining.toInt();
+              } else {
+                  major = remaining.substring(0, second_space).toInt();
+                  minor = remaining.substring(second_space + 1).toInt();
+              }
+          }
+          Serial.printf("Starting iBeacon with UUID: %s, Major: %d, Minor: %d\n", uuid.c_str(), major, minor);
+          bleSpammer.startIBeacon(uuid, major, minor);
       } else {
         Serial.println("Unknown spam type.");
       }

@@ -62,14 +62,26 @@ public:
      * @return true if the attack started successfully, false otherwise.
      */
     bool startCustom(String spamName);
+    
+    /**
+     * @brief Starts an iBeacon advertisement indefinitely.
+     * @param uuid The UUID of the iBeacon.
+     * @param major The major value (default: 1).
+     * @param minor The minor value (default: 1).
+     * @param manufacturerId The manufacturer ID (default: 0x4C00 for Apple).
+     * @param txPower The transmission power (default: -59).
+     * @return true if the iBeacon started successfully, false otherwise.
+     */
+    bool startIBeacon(String uuid, uint16_t major = 1, uint16_t minor = 1, uint16_t manufacturerId = 0x4C00, int8_t txPower = -59);
+
 
     /**
-     * @brief Stops any running BLE spam attack.
+     * @brief Stops any running BLE spam or iBeacon attack.
      */
     void stop();
 
     /**
-     * @brief Checks if a spam attack is currently running.
+     * @brief Checks if an attack is currently running.
      * @return true if an attack is active, false otherwise.
      */
     bool isRunning();
@@ -98,8 +110,11 @@ public:
     void spamCustom(String spamName, unsigned long duration_ms);
 
 private:
+    enum AttackMode { NONE, SPAM_TYPE, SPAM_ALL, SPAM_CUSTOM, IBEACON };
+
     void executeSpam(EBLEPayloadType type);
     void executeCustomSpam(String spamName);
+    void executeIBeacon();
     void generateRandomMac(uint8_t* mac);
     const char* generateRandomName();
     BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type);
@@ -110,9 +125,16 @@ private:
     volatile bool _isRunning;
 
     // Parameters for the running task
+    volatile AttackMode _currentMode;
     volatile EBLEPayloadType _currentSpamType;
     String _customSpamName;
-    volatile bool _spamAllTypes;
+    
+    // Parameters for iBeacon
+    String _iBeaconUUID;
+    uint16_t _iBeaconMajor;
+    uint16_t _iBeaconMinor;
+    uint16_t _iBeaconManufacturerId;
+    int8_t _iBeaconTxPower;
 
     BLEAdvertising* pAdvertising;
 

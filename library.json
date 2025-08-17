@@ -1,5 +1,5 @@
 {
-  "name": "BleSpamLib",
+  "name": "BLESpam",
   "version": "1.0.0",
   "description": "A library to perform various BLE spam attacks, extracted from the Bruce project. For educational and security research purposes only.",
   "keywords": "ble, bluetooth, spam, security, esp32",
